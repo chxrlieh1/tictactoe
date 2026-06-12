@@ -33,6 +33,14 @@
       color: #a8dadc;
     }
 
+    #mode-indicator {
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #444;
+      margin-bottom: 0.6rem;
+    }
+
     #board {
       display: grid;
       grid-template-columns: repeat(3, 110px);
@@ -54,15 +62,16 @@
       user-select: none;
     }
 
-    .cell:hover:not(.taken) {
+    .cell:hover:not(.taken):not(.blocked) {
       background: #0f3460;
       transform: scale(1.05);
     }
 
+    .cell.blocked { cursor: default; }
+
     .cell.x { color: #e94560; }
     .cell.o { color: #a8dadc; }
 
-    /* Key hint — shown on empty cells, hidden once taken */
     .cell::before {
       content: attr(data-key);
       position: absolute;
@@ -75,16 +84,15 @@
       transition: opacity 0.15s;
     }
 
-    .cell.taken::before { opacity: 0; }
+    .cell.taken::before,
+    .cell.blocked::before { opacity: 0; }
 
     @keyframes winning-pulse {
       0%, 100% { transform: scale(1); }
       50%       { transform: scale(1.08); }
     }
 
-    .cell.winning {
-      animation: winning-pulse 0.6s ease-in-out infinite;
-    }
+    .cell.winning { animation: winning-pulse 0.6s ease-in-out infinite; }
 
     .cell.winning.x {
       background: rgba(233, 69, 96, 0.35);
@@ -136,6 +144,65 @@
     .score-box.x-score .value { color: #e94560; }
     .score-box.o-score .value { color: #a8dadc; }
     .score-box.tie-score .value { color: #888; }
+
+    /* Mode selection overlay */
+    #mode-screen {
+      position: fixed;
+      inset: 0;
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      gap: 2.5rem;
+    }
+
+    #mode-screen h2 {
+      font-size: 1.2rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #888;
+    }
+
+    .mode-buttons {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .mode-btn {
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 16px;
+      color: #eee;
+      cursor: pointer;
+      padding: 1.8rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+      width: 155px;
+      transition: border-color 0.15s, background 0.15s, transform 0.12s;
+    }
+
+    .mode-btn:hover {
+      border-color: #e94560;
+      background: #0f3460;
+      transform: scale(1.06);
+    }
+
+    .mode-btn .mode-label {
+      font-size: 1.05rem;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    .mode-btn .mode-sub {
+      font-size: 0.72rem;
+      color: #777;
+      text-align: center;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -156,6 +223,7 @@
     </div>
   </div>
 
+  <div id="mode-indicator"></div>
   <div id="status">X's turn</div>
 
   <div id="board">
@@ -170,7 +238,22 @@
     <div class="cell" data-i="8" data-key="3"></div>
   </div>
 
-  <button id="reset">New Game</button>
+  <button id="reset">Change Mode</button>
+
+  <!-- Mode selection overlay -->
+  <div id="mode-screen">
+    <h2>Choose Mode</h2>
+    <div class="mode-buttons">
+      <button class="mode-btn" id="btn-friend">
+        <span class="mode-label">vs Friend</span>
+        <span class="mode-sub">2 players, same device</span>
+      </button>
+      <button class="mode-btn" id="btn-ai">
+        <span class="mode-label">vs AI</span>
+        <span class="mode-sub">Play against the computer</span>
+      </button>
+    </div>
+  </div>
 
   <script>
     const CONFETTI_COLORS = ['#e94560','#a8dadc','#f6c90e','#48cae4','#ff6b6b','#c77dff','#ffffff'];
@@ -199,7 +282,6 @@
       }));
 
       const start = performance.now();
-      let frame;
 
       (function draw(now) {
         const elapsed = now - start;
@@ -228,44 +310,119 @@
             ctx.restore();
           }
         });
-        if (alive && elapsed < 4500) {
-          frame = requestAnimationFrame(draw);
-        } else {
-          canvas.remove();
-        }
+        if (alive && elapsed < 4500) requestAnimationFrame(draw);
+        else canvas.remove();
       })(start);
     }
 
+    // ── AI (minimax) ─────────────────────────────────────────────────────────
+
     const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+    function checkWinBoard(b) {
+      for (const [a, bc, c] of WINS) {
+        if (b[a] && b[a] === b[bc] && b[a] === b[c]) return b[a];
+      }
+      return null;
+    }
+
+    function minimax(b, isMaximizing) {
+      const winner = checkWinBoard(b);
+      if (winner === 'O') return 10;
+      if (winner === 'X') return -10;
+      if (b.every(v => v)) return 0;
+
+      if (isMaximizing) {
+        let best = -Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (!b[i]) { b[i] = 'O'; best = Math.max(best, minimax(b, false)); b[i] = ''; }
+        }
+        return best;
+      } else {
+        let best = Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (!b[i]) { b[i] = 'X'; best = Math.min(best, minimax(b, true)); b[i] = ''; }
+        }
+        return best;
+      }
+    }
+
+    function getBestMove() {
+      let best = -Infinity, bestMove = -1;
+      const b = [...board];
+      for (let i = 0; i < 9; i++) {
+        if (!b[i]) {
+          b[i] = 'O';
+          const score = minimax(b, false);
+          b[i] = '';
+          if (score > best) { best = score; bestMove = i; }
+        }
+      }
+      return bestMove;
+    }
+
+    // ── Game state ───────────────────────────────────────────────────────────
+
+    const KEY_MAP = {'7':0,'8':1,'9':2,'4':3,'5':4,'6':5,'1':6,'2':7,'3':8};
     const cells = document.querySelectorAll('.cell');
-    const status = document.getElementById('status');
+    const statusEl = document.getElementById('status');
+    const modeIndicator = document.getElementById('mode-indicator');
+    const modeScreen = document.getElementById('mode-screen');
     const scores = { X: 0, O: 0, tie: 0 };
 
-    // numpad layout: 7=top-left … 1=bottom-left
-    const KEY_MAP = {'7':0,'8':1,'9':2,'4':3,'5':4,'6':5,'1':6,'2':7,'3':8};
+    let board, current, over, nextGameTimer, aiThinking, mode;
 
-    let board, current, over, nextGameTimer;
+    function showModeScreen() {
+      clearTimeout(nextGameTimer);
+      aiThinking = false;
+      over = true;
+      board = Array(9).fill('');
+      cells.forEach(c => { c.innerHTML = ''; c.className = 'cell'; });
+      statusEl.textContent = '';
+      document.querySelectorAll('.confetti-canvas').forEach(c => c.remove());
+      modeScreen.style.display = 'flex';
+    }
+
+    function startMode(m) {
+      mode = m;
+      modeIndicator.textContent = m === 'ai' ? 'vs AI' : 'vs Friend';
+      modeScreen.style.display = 'none';
+      init();
+    }
 
     function init() {
       clearTimeout(nextGameTimer);
+      aiThinking = false;
       board = Array(9).fill('');
       current = 'X';
       over = false;
       cells.forEach(c => { c.innerHTML = ''; c.className = 'cell'; });
-      status.textContent = "X's turn";
+      setStatus();
       document.querySelectorAll('.confetti-canvas').forEach(c => c.remove());
     }
 
+    function setStatus() {
+      if (mode === 'ai') {
+        statusEl.textContent = current === 'X' ? "Your turn" : "AI thinking...";
+      } else {
+        statusEl.textContent = `${current}'s turn`;
+      }
+      // Block cells visually when it's the AI's turn
+      cells.forEach(c => {
+        if (mode === 'ai' && current === 'O' && !over) c.classList.add('blocked');
+        else c.classList.remove('blocked');
+      });
+    }
+
     function checkWin() {
-      for (const [a,b,c] of WINS) {
-        if (board[a] && board[a] === board[b] && board[a] === board[c])
-          return [a,b,c];
+      for (const [a, b, c] of WINS) {
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) return [a, b, c];
       }
       return null;
     }
 
     function playCell(i) {
-      if (over || board[i]) return;
+      if (over || board[i] || aiThinking) return;
 
       board[i] = current;
       cells[i].innerHTML = `<span class="symbol">${current}</span>`;
@@ -274,21 +431,34 @@
       const win = checkWin();
       if (win) {
         win.forEach(idx => cells[idx].classList.add('winning'));
-        status.textContent = `${current} wins!`;
+        if (mode === 'ai') {
+          statusEl.textContent = current === 'X' ? "You win!" : "AI wins!";
+        } else {
+          statusEl.textContent = `${current} wins!`;
+        }
         scores[current]++;
         document.getElementById(`score-${current.toLowerCase()}`).textContent = scores[current];
         over = true;
+        cells.forEach(c => c.classList.remove('blocked'));
         celebrate();
         nextGameTimer = setTimeout(init, 2200);
       } else if (board.every(v => v)) {
-        status.textContent = "It's a tie!";
+        statusEl.textContent = "It's a tie!";
         scores.tie++;
         document.getElementById('score-tie').textContent = scores.tie;
         over = true;
+        cells.forEach(c => c.classList.remove('blocked'));
         nextGameTimer = setTimeout(init, 2200);
       } else {
         current = current === 'X' ? 'O' : 'X';
-        status.textContent = `${current}'s turn`;
+        setStatus();
+        if (mode === 'ai' && current === 'O') {
+          aiThinking = true;
+          setTimeout(() => {
+            aiThinking = false;
+            playCell(getBestMove());
+          }, 450);
+        }
       }
     }
 
@@ -301,9 +471,9 @@
       if (idx !== undefined) playCell(idx);
     });
 
-    document.getElementById('reset').addEventListener('click', init);
-
-    init();
+    document.getElementById('reset').addEventListener('click', showModeScreen);
+    document.getElementById('btn-friend').addEventListener('click', () => startMode('friend'));
+    document.getElementById('btn-ai').addEventListener('click', () => startMode('ai'));
   </script>
 </body>
 </html>
