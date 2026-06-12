@@ -24,7 +24,7 @@
       letter-spacing: 4px;
       text-transform: uppercase;
       color: #ff2d78;
-      text-shadow: 0 0 8px #ff2d78, 0 0 22px #ff2d78, 0 0 45px rgba(255,45,120,0.35);
+      text-shadow: 0 0 10px rgba(255,45,120,0.4);
     }
 
     #status {
@@ -74,12 +74,12 @@
 
     .cell.x {
       color: #ff2d78;
-      text-shadow: 0 0 10px #ff2d78, 0 0 22px rgba(255,45,120,0.5);
+      text-shadow: 0 0 8px rgba(255,45,120,0.35);
     }
 
     .cell.o {
       color: #00e5ff;
-      text-shadow: 0 0 10px #00e5ff, 0 0 22px rgba(0,229,255,0.5);
+      text-shadow: 0 0 8px rgba(0,229,255,0.35);
     }
 
     .cell::before {
@@ -105,15 +105,15 @@
     .cell.winning { animation: winning-pulse 0.6s ease-in-out infinite; }
 
     .cell.winning.x {
-      background: rgba(255, 45, 120, 0.12);
-      border-color: rgba(255, 45, 120, 0.5);
-      box-shadow: 0 0 28px rgba(255,45,120,0.8), inset 0 0 14px rgba(255,45,120,0.15);
+      background: rgba(255, 45, 120, 0.1);
+      border-color: rgba(255, 45, 120, 0.4);
+      box-shadow: 0 0 16px rgba(255,45,120,0.45);
     }
 
     .cell.winning.o {
-      background: rgba(0, 229, 255, 0.12);
-      border-color: rgba(0, 229, 255, 0.5);
-      box-shadow: 0 0 28px rgba(0,229,255,0.8), inset 0 0 14px rgba(0,229,255,0.15);
+      background: rgba(0, 229, 255, 0.1);
+      border-color: rgba(0, 229, 255, 0.4);
+      box-shadow: 0 0 16px rgba(0,229,255,0.45);
     }
 
     @keyframes pop-in {
@@ -139,7 +139,6 @@
       cursor: pointer;
       letter-spacing: 1px;
       transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
-      text-shadow: 0 0 8px rgba(255,45,120,0.4);
     }
 
     #reset:hover {
@@ -158,14 +157,8 @@
     .score-box { text-align: center; }
     .score-box .label { color: #333; font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; }
     .score-box .value { font-size: 1.8rem; font-weight: bold; }
-    .score-box.x-score .value {
-      color: #ff2d78;
-      text-shadow: 0 0 8px rgba(255,45,120,0.4);
-    }
-    .score-box.o-score .value {
-      color: #00e5ff;
-      text-shadow: 0 0 8px rgba(0,229,255,0.4);
-    }
+    .score-box.x-score .value { color: #ff2d78; }
+    .score-box.o-score .value { color: #00e5ff; }
     .score-box.tie-score .value { color: #444; }
 
     /* Mode selection overlay */
@@ -215,7 +208,7 @@
       letter-spacing: 4px;
       text-transform: uppercase;
       color: #ff2d78;
-      text-shadow: 0 0 8px #ff2d78, 0 0 22px #ff2d78, 0 0 45px rgba(255,45,120,0.35);
+      text-shadow: 0 0 10px rgba(255,45,120,0.4);
     }
 
     .mode-card h2 {
@@ -434,7 +427,7 @@
     const modeScreen = document.getElementById('mode-screen');
     const scores = { X: 0, O: 0, tie: 0 };
 
-    let board, current, over, nextGameTimer, aiThinking, mode;
+    let board, current, over, nextGameTimer, aiThinking, mode, startingPlayer;
 
     const modeCard = document.querySelector('.mode-card');
 
@@ -453,12 +446,12 @@
     }
 
     function startMode(m) {
-      // Play dismiss animation, then switch to the game
       modeCard.classList.add('dismissing');
       modeCard.addEventListener('animationend', function handler() {
         modeCard.removeEventListener('animationend', handler);
         modeScreen.style.display = 'none';
         mode = m;
+        startingPlayer = 'X';
         modeIndicator.textContent = m === 'ai' ? 'vs AI' : 'vs Friend';
         init();
       });
@@ -468,11 +461,16 @@
       clearTimeout(nextGameTimer);
       aiThinking = false;
       board = Array(9).fill('');
-      current = 'X';
+      current = startingPlayer;
       over = false;
       cells.forEach(c => { c.innerHTML = ''; c.className = 'cell'; });
       setStatus();
       document.querySelectorAll('.confetti-canvas').forEach(c => c.remove());
+      // If AI has first move, trigger it after a short delay
+      if (mode === 'ai' && current === 'O') {
+        aiThinking = true;
+        setTimeout(() => { aiThinking = false; playCell(getBestMove()); }, 600);
+      }
     }
 
     function setStatus() {
@@ -515,6 +513,7 @@
         over = true;
         cells.forEach(c => c.classList.remove('blocked'));
         celebrate();
+        if (mode === 'ai') startingPlayer = startingPlayer === 'X' ? 'O' : 'X';
         nextGameTimer = setTimeout(init, 2200);
       } else if (board.every(v => v)) {
         statusEl.textContent = "It's a tie!";
@@ -522,6 +521,7 @@
         document.getElementById('score-tie').textContent = scores.tie;
         over = true;
         cells.forEach(c => c.classList.remove('blocked'));
+        if (mode === 'ai') startingPlayer = startingPlayer === 'X' ? 'O' : 'X';
         nextGameTimer = setTimeout(init, 2200);
       } else {
         current = current === 'X' ? 'O' : 'X';
