@@ -41,6 +41,7 @@
     }
 
     .cell {
+      position: relative;
       background: #16213e;
       border-radius: 12px;
       display: flex;
@@ -60,6 +61,21 @@
 
     .cell.x { color: #e94560; }
     .cell.o { color: #a8dadc; }
+
+    /* Key hint — shown on empty cells, hidden once taken */
+    .cell::before {
+      content: attr(data-key);
+      position: absolute;
+      top: 7px;
+      left: 9px;
+      font-size: 0.7rem;
+      font-weight: normal;
+      color: #3a4a6a;
+      pointer-events: none;
+      transition: opacity 0.15s;
+    }
+
+    .cell.taken::before { opacity: 0; }
 
     @keyframes winning-pulse {
       0%, 100% { transform: scale(1); }
@@ -143,15 +159,15 @@
   <div id="status">X's turn</div>
 
   <div id="board">
-    <div class="cell" data-i="0"></div>
-    <div class="cell" data-i="1"></div>
-    <div class="cell" data-i="2"></div>
-    <div class="cell" data-i="3"></div>
-    <div class="cell" data-i="4"></div>
-    <div class="cell" data-i="5"></div>
-    <div class="cell" data-i="6"></div>
-    <div class="cell" data-i="7"></div>
-    <div class="cell" data-i="8"></div>
+    <div class="cell" data-i="0" data-key="7"></div>
+    <div class="cell" data-i="1" data-key="8"></div>
+    <div class="cell" data-i="2" data-key="9"></div>
+    <div class="cell" data-i="3" data-key="4"></div>
+    <div class="cell" data-i="4" data-key="5"></div>
+    <div class="cell" data-i="5" data-key="6"></div>
+    <div class="cell" data-i="6" data-key="1"></div>
+    <div class="cell" data-i="7" data-key="2"></div>
+    <div class="cell" data-i="8" data-key="3"></div>
   </div>
 
   <button id="reset">New Game</button>
@@ -225,9 +241,13 @@
     const status = document.getElementById('status');
     const scores = { X: 0, O: 0, tie: 0 };
 
-    let board, current, over;
+    // numpad layout: 7=top-left … 1=bottom-left
+    const KEY_MAP = {'7':0,'8':1,'9':2,'4':3,'5':4,'6':5,'1':6,'2':7,'3':8};
+
+    let board, current, over, nextGameTimer;
 
     function init() {
+      clearTimeout(nextGameTimer);
       board = Array(9).fill('');
       current = 'X';
       over = false;
@@ -244,33 +264,41 @@
       return null;
     }
 
+    function playCell(i) {
+      if (over || board[i]) return;
+
+      board[i] = current;
+      cells[i].innerHTML = `<span class="symbol">${current}</span>`;
+      cells[i].classList.add('taken', current.toLowerCase());
+
+      const win = checkWin();
+      if (win) {
+        win.forEach(idx => cells[idx].classList.add('winning'));
+        status.textContent = `${current} wins!`;
+        scores[current]++;
+        document.getElementById(`score-${current.toLowerCase()}`).textContent = scores[current];
+        over = true;
+        celebrate();
+        nextGameTimer = setTimeout(init, 2200);
+      } else if (board.every(v => v)) {
+        status.textContent = "It's a tie!";
+        scores.tie++;
+        document.getElementById('score-tie').textContent = scores.tie;
+        over = true;
+        nextGameTimer = setTimeout(init, 2200);
+      } else {
+        current = current === 'X' ? 'O' : 'X';
+        status.textContent = `${current}'s turn`;
+      }
+    }
+
     cells.forEach(cell => {
-      cell.addEventListener('click', () => {
-        const i = +cell.dataset.i;
-        if (over || board[i]) return;
+      cell.addEventListener('click', () => playCell(+cell.dataset.i));
+    });
 
-        board[i] = current;
-        cell.innerHTML = `<span class="symbol">${current}</span>`;
-        cell.classList.add('taken', current.toLowerCase());
-
-        const win = checkWin();
-        if (win) {
-          win.forEach(idx => cells[idx].classList.add('winning'));
-          status.textContent = `${current} wins!`;
-          scores[current]++;
-          document.getElementById(`score-${current.toLowerCase()}`).textContent = scores[current];
-          over = true;
-          celebrate();
-        } else if (board.every(v => v)) {
-          status.textContent = "It's a tie!";
-          scores.tie++;
-          document.getElementById('score-tie').textContent = scores.tie;
-          over = true;
-        } else {
-          current = current === 'X' ? 'O' : 'X';
-          status.textContent = `${current}'s turn`;
-        }
-      });
+    document.addEventListener('keydown', e => {
+      const idx = KEY_MAP[e.key];
+      if (idx !== undefined) playCell(idx);
     });
 
     document.getElementById('reset').addEventListener('click', init);
